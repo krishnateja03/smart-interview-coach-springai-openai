@@ -6,16 +6,19 @@ import com.springai_llm.smart_interview_coach.dto.EvaluationResponse;
 import com.springai_llm.smart_interview_coach.dto.QuestionRequest;
 import com.springai_llm.smart_interview_coach.dto.QuestionResponse;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Service;
 
 @Service
 public class InterviewService {
 
-
     private final ChatClient chatClient;
+    private final RagContextService ragContextService;
 
-    public InterviewService(ChatClient.Builder chatClient) {
+    public InterviewService(ChatClient.Builder chatClient, RagContextService ragContextService) {
         this.chatClient = chatClient.build();
+        this.ragContextService = ragContextService;
     }
 
     public QuestionResponse generateQuestion(QuestionRequest request) {
@@ -31,18 +34,27 @@ public class InterviewService {
     }
 
     public EvaluationResponse evaluateAnswer(EvaluationRequest request) {
-        String prompt = String.format(
-                "You are an expert interview coach. Evaluate the following answer and suggest improvements if needed.\n\n" +
+        String context = ragContextService.retrieveContext("QUESTION: " + request.question() + "\n\n" + "ANSWER: " + request.answer());
+        String promptMsg = String.format(
+                "You are an expert interview coach. \n\n" +
+                        "Use the following context when evaluating the user's answer:\n" +
+                        "---------------------\n" +
+                        "%s\n" +
+                        "---------------------\n" +
+                        "Evaluate the following answer and suggest improvements if needed.\n\n" +
                         "Question: %s\n\n" +
                         "Answer: %s\n\n" +
                         "Please provide detailed feedback in lesser than 50 words:",
-                request.question(), request.answer()
+                context, request.question(), request.answer()
         );
 
+        UserMessage userMessage = new UserMessage(promptMsg);
+        Prompt promptObj = new Prompt(userMessage);
         String response = chatClient
-                .prompt(prompt)
+                .prompt(promptObj)
                 .call()
                 .content();
+
         return new EvaluationResponse(response);
     }
 }
